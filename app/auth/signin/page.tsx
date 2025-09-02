@@ -3,7 +3,7 @@
 import { signIn, getSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Github, Google, Mail } from "lucide-react" // Added Google and Mail icons
+import { Github, Mail, Chrome } from "lucide-react" // Using Chrome icon instead of Google
 import Image from "next/image"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
@@ -96,7 +96,7 @@ export default function SignIn() {
             className="w-full bg-blue-600 hover:bg-blue-700 text-white"
             size="lg"
           >
-            <Google className="mr-2 h-5 w-5" />
+            <Chrome className="mr-2 h-5 w-5" />
             {isLoading ? "Signing in..." : "Continue with Google"}
           </Button>
           <Button
