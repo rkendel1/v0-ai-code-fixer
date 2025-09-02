@@ -37,80 +37,18 @@ export function AIAnalysisWidget({
   const { startAnalysis, getAnalysis, applyFix } = useAICodeFix()
 
   const handleStartAnalysis = async () => {
-    const analysisId = await startAnalysis({
-      bugDescription: `Bug ID: ${bugId}`,
-      techStack: ["React", "Next.js", "TypeScript"],
-      useKnowledgeBase: true,
-    })
+    try {
+      const analysisId = await startAnalysis({
+        bugDescription: `Bug ID: ${bugId}`,
+        techStack: ["React", "Next.js", "TypeScript"],
+        useKnowledgeBase: true,
+      })
 
-    console.log(`[v0] Started AI analysis: ${analysisId}`)
-  }
-
-  const mockCodeChanges = [
-    {
-      file: "components/LoginForm.tsx",
-      changes: `// Added form submission handler
-const handleSubmit = async (e: FormEvent) => {
-  e.preventDefault()
-  setIsLoading(true)
-  
-  try {
-    const response = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    })
-    
-    if (!response.ok) {
-      throw new Error('Login failed')
+      console.log(`[v0] Started AI analysis: ${analysisId}`)
+    } catch (error) {
+      console.error('Failed to start analysis:', error)
     }
-    
-    // Handle successful login
-    router.push('/dashboard')
-  } catch (error) {
-    setError('Invalid credentials')
-  } finally {
-    setIsLoading(false)
   }
-}`,
-      type: "add" as const,
-    },
-    {
-      file: "app/api/auth/login/route.ts",
-      changes: `// Fixed error handling
-export async function POST(request: Request) {
-  try {
-    const { email, password } = await request.json()
-    
-    // Validate input
-    if (!email || !password) {
-      return NextResponse.json(
-        { error: 'Email and password required' },
-        { status: 400 }
-      )
-    }
-    
-    // Authentication logic here
-    const user = await authenticateUser(email, password)
-    
-    if (!user) {
-      return NextResponse.json(
-        { error: 'Invalid credentials' },
-        { status: 401 }
-      )
-    }
-    
-    return NextResponse.json({ user })
-  } catch (error) {
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
-  }
-}`,
-      type: "modify" as const,
-    },
-  ]
 
   return (
     <Card className="w-full">
@@ -181,7 +119,7 @@ export async function POST(request: Request) {
                     <div className="text-sm text-slate-600">Confidence</div>
                   </div>
                   <div>
-                    <div className="text-2xl font-bold text-green-600">{mockCodeChanges.length}</div>
+                    <div className="text-2xl font-bold text-green-600">{codeChanges.length}</div>
                     <div className="text-sm text-slate-600">Files to Fix</div>
                   </div>
                 </div>
@@ -231,7 +169,7 @@ export async function POST(request: Request) {
                 </div>
 
                 <div className="space-y-3">
-                  {mockCodeChanges.map((change, index) => (
+                  {codeChanges.map((change, index) => (
                     <Card key={index} className="border-slate-200">
                       <CardHeader className="pb-3">
                         <div className="flex items-center justify-between">

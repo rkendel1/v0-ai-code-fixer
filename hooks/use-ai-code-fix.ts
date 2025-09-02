@@ -55,7 +55,7 @@ export function useAICodeFix() {
     setIsLoading(true)
 
     try {
-      // Simulate AI analysis with progressive updates
+      // Simulate progressive updates for better UX
       const progressInterval = setInterval(() => {
         setAnalyses((prev) => {
           const current = prev.get(analysisId)
@@ -64,68 +64,44 @@ export function useAICodeFix() {
             return prev
           }
 
-          const newProgress = Math.min(current.progress + Math.random() * 15, 95)
+          const newProgress = Math.min(current.progress + Math.random() * 15, 85)
           const updated = { ...current, progress: newProgress }
 
-          // Add findings as progress increases
+          // Add preliminary findings as progress increases
           if (newProgress > 30 && current.findings.length === 0) {
-            updated.findings = ["Identified potential authentication flow issue", "Missing error handling in API route"]
-          }
-
-          if (newProgress > 60 && current.knowledgeBaseMatches?.length === 0) {
-            updated.knowledgeBaseMatches = [
-              { id: "KB-001", title: "JWT Authentication Implementation", similarity: 0.89 },
-              { id: "KB-004", title: "API Error Handling Patterns", similarity: 0.76 },
-            ]
+            updated.findings = ["Analyzing code structure...", "Checking for common patterns..."]
           }
 
           return new Map(prev.set(analysisId, updated))
         })
       }, 1000)
 
-      // Complete analysis after delay
-      setTimeout(() => {
-        clearInterval(progressInterval)
+      // Make real API call to analyze code
+      const response = await fetch('/api/ai/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(options),
+      });
 
-        const mockResult: CodeAnalysisResult = {
-          id: analysisId,
-          status: Math.random() > 0.2 ? "completed" : "failed", // 80% success rate
-          progress: 100,
-          confidence: Math.floor(Math.random() * 30) + 70, // 70-100% confidence
-          findings: [
-            "Authentication middleware missing proper error handling",
-            "Form validation not preventing empty submissions",
-            "API route lacks input sanitization",
-          ],
-          suggestedFix: "Implement proper error boundaries and input validation",
-          codeChanges: [
-            {
-              file: "middleware.ts",
-              changes: `export function middleware(request: NextRequest) {
-  try {
-    const token = request.cookies.get('auth-token')
-    if (!token) {
-      return NextResponse.redirect(new URL('/login', request.url))
-    }
-    // Validate token here
-    return NextResponse.next()
-  } catch (error) {
-    console.error('Auth middleware error:', error)
-    return NextResponse.redirect(new URL('/login', request.url))
-  }
-}`,
-              type: "modify",
-            },
-          ],
-          knowledgeBaseMatches: [
-            { id: "KB-001", title: "JWT Authentication Implementation", similarity: 0.89 },
-            { id: "KB-004", title: "API Error Handling Patterns", similarity: 0.76 },
-          ],
-        }
+      clearInterval(progressInterval);
 
-        setAnalyses((prev) => new Map(prev.set(analysisId, mockResult)))
-        setIsLoading(false)
-      }, 8000)
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Analysis failed');
+      }
+
+      const result = await response.json();
+
+      // Update with real results
+      setAnalyses((prev) => new Map(prev.set(analysisId, {
+        ...result,
+        id: analysisId, // Keep the original ID
+        status: "completed" as const,
+      })));
+      
+      setIsLoading(false);
     } catch (error) {
       console.error("AI analysis failed:", error)
       setAnalyses(
