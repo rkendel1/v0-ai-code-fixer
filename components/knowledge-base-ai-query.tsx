@@ -35,101 +35,63 @@ export function KnowledgeBaseAIQuery({ isSubscriber, remainingQueries = 0 }: AIQ
     if (!query.trim()) return
 
     setIsQuerying(true)
+    setResults([])
+    setAiSummary("")
 
-    // Simulate AI-powered knowledge base search
-    setTimeout(() => {
-      const mockResults: QueryResult[] = [
-        {
-          id: "KB-089",
-          title: "Authentication State Management with Context",
-          summary:
-            "Complete implementation of authentication state using React Context with TypeScript, including login persistence and automatic token refresh.",
-          relevanceScore: 0.94,
-          category: "Authentication Issues",
-          codeExample: `const AuthContext = createContext<AuthContextType | null>(null)
-
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-
-  useEffect(() => {
-    const token = localStorage.getItem('auth-token')
-    if (token) {
-      validateToken(token).then(setUser)
-    }
-    setIsLoading(false)
-  }, [])
-
-  return (
-    <AuthContext.Provider value={{ user, setUser, isLoading }}>
-      {children}
-    </AuthContext.Provider>
-  )
-}`,
-          tags: ["authentication", "context", "typescript", "react"],
-          difficulty: "Intermediate",
+    try {
+      // Make real API call to knowledge base search
+      const response = await fetch('/api/knowledge-base/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-        {
-          id: "KB-156",
-          title: "Form Validation with Zod and React Hook Form",
-          summary:
-            "Robust form validation setup using Zod schemas with React Hook Form, including custom error messages and async validation.",
-          relevanceScore: 0.87,
-          category: "Form Validation",
-          codeExample: `const loginSchema = z.object({
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters")
-})
+        body: JSON.stringify({
+          query: `${query} ${codeContext}`.trim(),
+          type: 'hybrid', // Use hybrid search for best results
+        }),
+      });
 
-const { register, handleSubmit, formState: { errors } } = useForm({
-  resolver: zodResolver(loginSchema)
-})`,
-          tags: ["validation", "zod", "react-hook-form", "forms"],
-          difficulty: "Intermediate",
-        },
-        {
-          id: "KB-203",
-          title: "Next.js API Route Error Handling Best Practices",
-          summary:
-            "Comprehensive error handling patterns for Next.js API routes with proper HTTP status codes and error logging.",
-          relevanceScore: 0.82,
-          category: "API Integration",
-          codeExample: `export async function POST(request: Request) {
-  try {
-    const body = await request.json()
-    
-    // Validate input
-    const result = schema.safeParse(body)
-    if (!result.success) {
-      return NextResponse.json(
-        { error: "Invalid input", details: result.error.issues },
-        { status: 400 }
-      )
-    }
-    
-    // Process request
-    const data = await processData(result.data)
-    return NextResponse.json(data)
-    
-  } catch (error) {
-    console.error("API Error:", error)
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    )
-  }
-}`,
-          tags: ["nextjs", "api", "error-handling", "typescript"],
-          difficulty: "Advanced",
-        },
-      ]
+      if (!response.ok) {
+        throw new Error('Search failed');
+      }
 
-      setResults(mockResults)
+      const searchData = await response.json();
+      
+      // Transform API results to match component interface
+      const transformedResults: QueryResult[] = searchData.results.map((result: any) => ({
+        id: result.id,
+        title: result.title,
+        summary: result.content || result.summary || '',
+        relevanceScore: result.similarity || result.relevanceScore || 0.7,
+        category: result.category || 'General',
+        codeExample: result.codeExample || '',
+        tags: result.tags || result.techStack || [],
+        difficulty: result.difficulty || 'Intermediate',
+      }));
+
+      setResults(transformedResults);
+      
+      // Generate AI summary based on real results
+      if (transformedResults.length > 0) {
+        const topScore = Math.round((transformedResults[0]?.relevanceScore || 0) * 100);
+        const categories = [...new Set(transformedResults.map(r => r.category))].slice(0, 3);
+        
+        setAiSummary(
+          `Found ${transformedResults.length} relevant solutions for "${query}". The top match has a ${topScore}% relevance score. Results cover ${categories.join(', ')} and related topics from our knowledge base.`
+        );
+      } else {
+        setAiSummary(
+          `No exact matches found for "${query}". Try using different keywords or check our general documentation for similar topics.`
+        );
+      }
+    } catch (error) {
+      console.error('Knowledge base search error:', error);
       setAiSummary(
-        `Based on your query about "${query}", I found ${mockResults.length} highly relevant solutions in our knowledge base. The top match shows a ${Math.round(mockResults[0].relevanceScore * 100)}% relevance score. These solutions cover authentication patterns, form validation, and API error handling - all common issues in modern web applications.`,
-      )
-      setIsQuerying(false)
-    }, 3000)
+        `Sorry, there was an error searching the knowledge base. Please try again or contact support if the issue persists.`
+      );
+    } finally {
+      setIsQuerying(false);
+    }
   }
 
   const canQuery = isSubscriber || remainingQueries > 0

@@ -1,25 +1,29 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { searchKnowledgeBase } from "@/lib/database"
+import { semanticSearch, generateEmbedding } from "@/lib/openai"
 
 export async function POST(request: NextRequest) {
   try {
     const { query, type = "hybrid" } = await request.json()
 
-    // Mock vector search results - in production, integrate with vector database
-    const vectorResults = await performVectorSearch(query)
-    const semanticResults = await performSemanticSearch(query)
+    if (!query || typeof query !== 'string') {
+      return NextResponse.json({ error: "Query is required" }, { status: 400 });
+    }
 
     let results = []
 
     switch (type) {
       case "vector":
-        results = vectorResults
+        results = await performVectorSearch(query)
         break
       case "semantic":
-        results = semanticResults
+        results = await performSemanticSearch(query)
         break
       case "hybrid":
       default:
         // Combine and rank results from both approaches
+        const vectorResults = await performVectorSearch(query)
+        const semanticResults = await performSemanticSearch(query)
         results = combineSearchResults(vectorResults, semanticResults)
         break
     }
@@ -37,73 +41,103 @@ export async function POST(request: NextRequest) {
 }
 
 async function performVectorSearch(query: string) {
-  // Mock vector search - integrate with Pinecone, Weaviate, or similar
-  const mockResults = [
-    {
-      id: "1",
-      title: "React State Management Bug",
-      content: "Common issue with useState not updating immediately...",
-      similarity: 0.95,
-      techStack: ["React", "JavaScript"],
-      category: "state-management",
-    },
-    {
-      id: "2",
-      title: "Next.js Routing Problem",
-      content: "Dynamic routes not working properly in production...",
-      similarity: 0.87,
-      techStack: ["Next.js", "React"],
-      category: "routing",
-    },
-  ]
+  try {
+    // Get all knowledge base entries for semantic search
+    const knowledgeBaseEntries = await searchKnowledgeBase(query, 50);
+    
+    if (knowledgeBaseEntries.length === 0) {
+      return [];
+    }
 
-  return mockResults.filter(
-    (result) =>
-      result.content.toLowerCase().includes(query.toLowerCase()) ||
-      result.title.toLowerCase().includes(query.toLowerCase()),
-  )
+    // Prepare documents for semantic search
+    const documents = knowledgeBaseEntries.map(entry => ({
+      id: entry.id,
+      content: `${entry.title} ${entry.summary} ${entry.content}`,
+      title: entry.title,
+      summary: entry.summary,
+      category: entry.category,
+      techStack: entry.techStack,
+    }));
+
+    // Perform semantic search using OpenAI embeddings
+    const similarities = await semanticSearch(query, documents);
+    
+    return similarities
+      .filter(result => result.similarity > 0.7)
+      .map(result => {
+        const entry = knowledgeBaseEntries.find(e => e.id === result.id);
+        return {
+          id: result.id,
+          title: entry?.title || '',
+          content: entry?.summary || '',
+          similarity: result.similarity,
+          techStack: entry?.techStack || [],
+          category: entry?.category || '',
+        };
+      });
+  } catch (error) {
+    console.error('Vector search error:', error);
+    // Fallback to database text search if OpenAI fails
+    const entries = await searchKnowledgeBase(query, 10);
+    return entries.map(entry => ({
+      id: entry.id,
+      title: entry.title,
+      content: entry.summary,
+      similarity: 0.8, // Default similarity for fallback
+      techStack: entry.techStack,
+      category: entry.category,
+    }));
+  }
 }
 
 async function performSemanticSearch(query: string) {
-  // Mock semantic search - integrate with OpenAI embeddings or similar
-  const mockResults = [
-    {
-      id: "3",
-      title: "Component Not Rendering",
-      content: "When components fail to display, check these common causes...",
-      relevanceScore: 0.92,
-      techStack: ["React", "Vue.js"],
-      category: "rendering",
-    },
-    {
-      id: "4",
-      title: "API Integration Issues",
-      content: "Troubleshooting API calls and data fetching problems...",
-      relevanceScore: 0.84,
-      techStack: ["JavaScript", "Node.js"],
-      category: "api",
-    },
-  ]
-
-  return mockResults.filter((result) => semanticMatch(query, result.content) > 0.7)
+  try {
+    // Use database full-text search as the primary method
+    const entries = await searchKnowledgeBase(query, 20);
+    
+    return entries.map(entry => ({
+      id: entry.id,
+      title: entry.title,
+      content: entry.summary,
+      relevanceScore: calculateRelevanceScore(query, entry.title, entry.content, entry.summary),
+      techStack: entry.techStack,
+      category: entry.category,
+    }));
+  } catch (error) {
+    console.error('Semantic search error:', error);
+    return [];
+  }
 }
 
-function semanticMatch(query: string, content: string): number {
-  // Simple semantic matching - in production use proper NLP
-  const queryWords = query.toLowerCase().split(" ")
-  const contentWords = content.toLowerCase().split(" ")
-  const matches = queryWords.filter((word) => contentWords.includes(word))
-  return matches.length / queryWords.length
+function calculateRelevanceScore(query: string, title: string, content: string, summary: string): number {
+  const queryWords = query.toLowerCase().split(/\s+/);
+  const allText = `${title} ${content} ${summary}`.toLowerCase();
+  
+  let matches = 0;
+  let totalWords = queryWords.length;
+  
+  queryWords.forEach(word => {
+    if (allText.includes(word)) {
+      matches++;
+    }
+  });
+  
+  // Boost score if query words appear in title
+  const titleBoost = queryWords.some(word => title.toLowerCase().includes(word)) ? 0.2 : 0;
+  
+  return Math.min((matches / totalWords) + titleBoost, 1.0);
 }
 
 function combineSearchResults(vectorResults: any[], semanticResults: any[]) {
   const combined = [...vectorResults, ...semanticResults]
-  const unique = combined.filter((result, index, self) => index === self.findIndex((r) => r.id === result.id))
+  const unique = combined.filter((result, index, self) => 
+    index === self.findIndex((r) => r.id === result.id)
+  )
 
-  // Sort by relevance score
+  // Sort by relevance score (combining similarity and relevanceScore)
   return unique.sort((a, b) => {
     const scoreA = a.similarity || a.relevanceScore || 0
     const scoreB = b.similarity || b.relevanceScore || 0
     return scoreB - scoreA
-  })
+  }).slice(0, 10) // Limit to top 10 results
 }
